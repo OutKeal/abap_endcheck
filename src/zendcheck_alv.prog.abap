@@ -41,8 +41,21 @@ FORM frm_set_item_falv.
     i_parent = g_splitter_100->get_container( row = 2 column = 1 )
   CHANGING ct_table = gs_head-data->* ).
 
-  PERFORM frm_set_layout USING falv_down_100.
-  PERFORM frm_set_fieldcatalog USING falv_down_100.
+  IF gs_head-alv_mate IS NOT INITIAL.
+    ASSIGN COMPONENT 'T_FCAT' OF STRUCTURE gs_head-alv_mate->* TO FIELD-SYMBOL(<fcat>).
+    IF sy-subrc EQ 0.
+      falv_down_100->fcat = <fcat>.
+    ENDIF.
+    ASSIGN COMPONENT 'S_LAYOUT' OF STRUCTURE gs_head-alv_mate->* TO FIELD-SYMBOL(<layout>).
+    IF sy-subrc EQ 0.
+      falv_down_100->lvc_layout = <layout>.
+    ENDIF.
+  ELSE.
+    PERFORM frm_set_layout USING falv_down_100.
+    PERFORM frm_set_fieldcatalog USING falv_down_100.
+  ENDIF.
+
+
   falv_down_100->display( ).
 
 ENDFORM.
@@ -79,6 +92,7 @@ FORM frm_set_fieldcatalog USING c_falv TYPE REF TO zwft_falv.
             <ls_fcat>-hotspot = 'X'.
         ENDCASE.
       ENDLOOP.
+      DELETE c_falv->fcat WHERE tech = 'X'.
     WHEN falv_down_100.
   ENDCASE.
 ENDFORM.

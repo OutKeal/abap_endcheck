@@ -13,16 +13,17 @@ TYPES:BEGIN OF ty_head ,
         object_name LIKE zendcheck_rule-object_name,
         tabname     TYPE tabname,
         tcode       TYPE tcode,
+        variant     TYPE variant,
         count       TYPE int4,
         data        TYPE REF TO data,
         fieldlist   TYPE fieldname_tab,
         tranges     TYPE rsds_trange,
         twhere      TYPE rsds_twhere,
+        alv_mate    TYPE REF TO data,
       END OF ty_head.
 
 DATA gt_head TYPE TABLE OF ty_head.
 DATA gs_head TYPE  ty_head.
-
 
 DATA:falv_up_100    TYPE REF TO zwft_falv,
      falv_down_100  TYPE REF TO zwft_falv,

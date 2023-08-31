@@ -39,26 +39,28 @@ FORM frm_define_data.
   LOOP AT gt_rule INTO DATA(ls_rule).
 
     APPEND INITIAL LINE TO gt_head ASSIGNING FIELD-SYMBOL(<head>).
-    DATA(fcat) = zwft_common=>fcat_from_name( ls_rule-tabname ).
-    LOOP AT fcat ASSIGNING FIELD-SYMBOL(<fcat>).
-      READ TABLE gt_detail INTO DATA(ls_detail) WITH KEY object = ls_rule-object fieldname = <fcat>-fieldname.
-      IF sy-subrc NE 0.
-        <fcat>-tech = 'X'.
-      ELSE.
-        <fcat>-col_pos = ls_detail-dzaehk.
-        <fcat>-tabname = ls_rule-tabname.
-        APPEND |{ <fcat>-fieldname },| TO <head>-fieldlist.
-      ENDIF.
-    ENDLOOP.
-    DELETE fcat WHERE tech = 'X'.
-    SORT fcat BY col_pos.
-    LOOP AT <head>-fieldlist ASSIGNING FIELD-SYMBOL(<fieldlist>).
-    ENDLOOP.
-    IF sy-subrc EQ 0.
-      REPLACE ',' IN <fieldlist>  WITH ''.
-    ENDIF.
     MOVE-CORRESPONDING ls_rule TO <head>.
-    zwft_common=>create_table_fcat( EXPORTING it_fcat = fcat CHANGING ct_data = <head>-data ).
+    IF ls_rule-variant IS INITIAL.
+      DATA(fcat) = zwft_common=>fcat_from_name( ls_rule-tabname ).
+      LOOP AT fcat ASSIGNING FIELD-SYMBOL(<fcat>).
+        READ TABLE gt_detail INTO DATA(ls_detail) WITH KEY object = ls_rule-object fieldname = <fcat>-fieldname.
+        IF sy-subrc NE 0.
+          <fcat>-tech = 'X'.
+        ELSE.
+          <fcat>-col_pos = ls_detail-dzaehk.
+          <fcat>-tabname = ls_rule-tabname.
+          APPEND |{ <fcat>-fieldname },| TO <head>-fieldlist.
+        ENDIF.
+      ENDLOOP.
+      DELETE fcat WHERE tech = 'X'.
+      SORT fcat BY col_pos.
+      LOOP AT <head>-fieldlist ASSIGNING FIELD-SYMBOL(<fieldlist>).
+      ENDLOOP.
+      IF sy-subrc EQ 0.
+        REPLACE ',' IN <fieldlist>  WITH ''.
+      ENDIF.
+      zwft_common=>create_table_fcat( EXPORTING it_fcat = fcat CHANGING ct_data = <head>-data ).
+    ENDIF.
   ENDLOOP.
 ENDFORM.
 
@@ -66,13 +68,20 @@ FORM frm_get_data.
 
   LOOP AT gt_head ASSIGNING FIELD-SYMBOL(<head>).
     <head>-dzaehk = sy-tabix.
-    READ TABLE <head>-twhere INTO DATA(ls_where) WITH KEY tablename = <head>-tabname.
-    CHECK sy-subrc EQ 0.
+    IF <head>-variant IS INITIAL.
+      READ TABLE <head>-twhere INTO DATA(ls_where) WITH KEY tablename = <head>-tabname.
+      CHECK sy-subrc EQ 0.
+      SELECT DISTINCT (<head>-fieldlist)
+        FROM (<head>-tabname)
+        WHERE (ls_where-where_tab)
+        INTO CORRESPONDING FIELDS OF TABLE @<head>-data->*.
+    ELSE.
+      CREATE DATA <head>-alv_mate TYPE  zwft_common=>s_type_metadata.
+      <head>-alv_mate->* = zwft_common=>get_report_alv_mate( EXPORTING tcode = <head>-tcode
+                                                                                                                 variant = <head>-variant
+                                                                                            IMPORTING data =  <head>-data ).
+    ENDIF.
 
-    SELECT DISTINCT (<head>-fieldlist)
-      FROM (<head>-tabname)
-      WHERE (ls_where-where_tab)
-      INTO CORRESPONDING FIELDS OF TABLE @<head>-data->*.
     <head>-count = lines( <head>-data->* ).
     IF <head>-count = 0.
       <head>-icon = icon_green_light.
@@ -81,12 +90,12 @@ FORM frm_get_data.
       <head>-icon = icon_red_light.
       <head>-text = TEXT-004."'有异常,请双击查看'.
     ENDIF.
-
   ENDLOOP.
 ENDFORM.
 
 FORM frm_set_where.
   LOOP AT gt_head ASSIGNING FIELD-SYMBOL(<head>)."循环每个抬头结构
+    CHECK <head>-variant IS INITIAL.
     APPEND INITIAL LINE TO <head>-tranges ASSIGNING FIELD-SYMBOL(<range>).
     <range>-tablename = <head>-tabname.
     LOOP AT gt_detail INTO DATA(l_detail)
@@ -108,16 +117,7 @@ FORM frm_set_where.
         PERFORM frm_set_default USING line_group_detail-high CHANGING <selopt>-high.
       ENDLOOP.
     ENDLOOP.
-    IF lines( <head>-tranges ) > 0.
-      TRY.
-          CALL FUNCTION 'FREE_SELECTIONS_RANGE_2_WHERE'
-            EXPORTING
-              field_ranges  = <head>-tranges
-            IMPORTING
-              where_clauses = <head>-twhere.
-        CATCH cx_root INTO DATA(lx_fm_error).
-      ENDTRY.
-    ENDIF.
+    <head>-twhere = zwft_common=>get_where_from_ranges( <head>-tranges ).
   ENDLOOP.
 ENDFORM.
 FORM frm_set_default USING source CHANGING value.
@@ -143,6 +143,11 @@ FORM frm_call_transtion.
   WHERE tcode = @gs_head-tcode
   INTO @DATA(l_tstc).
   CHECK sy-subrc EQ 0.
+
+  IF gs_head-variant IS NOT INITIAL.
+    SUBMIT (l_tstc-pgmna)  USING SELECTION-SET gs_head-variant AND RETURN.
+    RETURN.
+  ENDIF.
   l_dynnr = l_tstc-dypno.
   CALL FUNCTION 'RS_ISOLATE_1_SELSCREEN'
     EXPORTING
