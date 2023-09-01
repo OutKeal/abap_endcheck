@@ -16,8 +16,8 @@ FORM frm_init.
 
   DATA: lt_list TYPE  vrm_values.
   lt_list = CORRESPONDING #( gt_group
-                                                MAPPING key = grp
-                                                                 text = name ).
+                                MAPPING key = grp
+                                                  text = name ).
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING
       id     = 'P_GRP'
@@ -37,7 +37,6 @@ ENDFORM.
 
 FORM frm_define_data.
   LOOP AT gt_rule INTO DATA(ls_rule).
-
     APPEND INITIAL LINE TO gt_head ASSIGNING FIELD-SYMBOL(<head>).
     MOVE-CORRESPONDING ls_rule TO <head>.
     IF ls_rule-variant IS INITIAL.
@@ -132,8 +131,6 @@ ENDFORM.
 FORM frm_call_transtion.
   DATA:lt_ranges TYPE TABLE OF rsparams.
   DATA:lt_rsparams TYPE TABLE OF rsparams.
-  DATA:lt_rsscr TYPE TABLE OF rsscr.
-  DATA:lt_rsscr1 TYPE TABLE OF rsscr.
   DATA:l_dynnr TYPE sy-dynnr.
   READ TABLE gt_head INTO gs_head INDEX head_index.
   CHECK sy-subrc EQ 0.
@@ -149,23 +146,14 @@ FORM frm_call_transtion.
     RETURN.
   ENDIF.
   l_dynnr = l_tstc-dypno.
-  CALL FUNCTION 'RS_ISOLATE_1_SELSCREEN'
-    EXPORTING
-      program     = l_tstc-pgmna
-      dynnr       = l_dynnr
-    TABLES
-      screen_sscr = lt_rsscr1
-      global_sscr = lt_rsscr
-    EXCEPTIONS
-      no_objects  = 1
-      OTHERS      = 2.
-  IF sy-subrc <> 0.
-    RETURN.
-  ELSE.
-    APPEND LINES OF lt_rsscr1 TO lt_rsscr.
-    SORT lt_rsscr BY name.
-    DELETE ADJACENT DUPLICATES FROM lt_rsscr.
-  ENDIF.
+  zwft_common=>get_dynnr_field( EXPORTING program = l_tstc-pgmna
+                                                                                       dynnr = l_dynnr
+                                                                 IMPORTING screen_sscr = DATA(lt_rsscr1)
+                                                                                      global_sscr = DATA(lt_rsscr) ).
+  APPEND LINES OF lt_rsscr1 TO lt_rsscr.
+  SORT lt_rsscr BY name.
+  DELETE ADJACENT DUPLICATES FROM lt_rsscr.
+
   LOOP AT gt_detail INTO DATA(l_detail)
                                 WHERE object = gs_head-object
                                 AND option_name <> ''
@@ -189,16 +177,21 @@ FORM frm_call_transtion.
     DELETE ADJACENT DUPLICATES FROM lt_ranges.
     SUBMIT (l_tstc-pgmna)  WITH SELECTION-TABLE lt_ranges AND RETURN.
   ELSE.
-    CALL FUNCTION 'RS_VARIANT_CONTENTS'
+    DATA rc TYPE sy-subrc.
+    CALL FUNCTION 'RS_VARIANT_EXISTS'
       EXPORTING
-        report               = l_tstc-pgmna
-        variant              = 'ERROR'
-      TABLES
-        valutab              = lt_rsparams
+        report              = l_tstc-pgmna
+        variant             = 'ERROR'
+      IMPORTING
+        r_c                 = rc
       EXCEPTIONS
-        variant_non_existent = 1
-        variant_obsolete     = 2.
-    IF sy-subrc EQ 0.
+        not_authorized      = 1
+        no_report           = 2
+        report_not_existent = 3
+        report_not_supplied = 4
+        OTHERS              = 5.
+
+    IF rc EQ 0 AND sy-subrc EQ 0.
       SUBMIT (l_tstc-pgmna)  USING SELECTION-SET 'ERROR' AND RETURN.
     ELSE.
       SUBMIT (l_tstc-pgmna) AND RETURN.
